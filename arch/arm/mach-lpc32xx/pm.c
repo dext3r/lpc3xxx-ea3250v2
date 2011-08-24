@@ -64,9 +64,11 @@
  *  Suspend mode is exited
  */
 
+#include <linux/pm.h>
 #include <linux/suspend.h>
 #include <linux/io.h>
 #include <linux/slab.h>
+#include <linux/delay.h>
 
 #include <asm/cacheflush.h>
 
@@ -76,25 +78,11 @@
 #include "clock.h"
 
 #define TEMP_IRAM_AREA  IO_ADDRESS(LPC32XX_IRAM_BASE)
+static void *iram_swap_area;
+static int (*lpc32xx_suspend_ptr) (void);
 
-/*
- * Both STANDBY and MEM suspend states are handled the same with no
- * loss of CPU or memory state
- */
-static int lpc32xx_pm_enter(suspend_state_t state)
+static inline int lpc32xx_suspend(void)
 {
-	int (*lpc32xx_suspend_ptr) (void);
-	void *iram_swap_area;
-
-	/* Allocate some space for temporary IRAM storage */
-	iram_swap_area = kmalloc(lpc32xx_sys_suspend_sz, GFP_KERNEL);
-	if (!iram_swap_area) {
-		printk(KERN_ERR
-		       "PM Suspend: cannot allocate memory to save portion "
-			"of SRAM\n");
-		return -ENOMEM;
-	}
-
 	/* Backup a small area of IRAM used for the suspend code */
 	memcpy(iram_swap_area, (void *) TEMP_IRAM_AREA,
 		lpc32xx_sys_suspend_sz);
@@ -106,25 +94,50 @@ static int lpc32xx_pm_enter(suspend_state_t state)
 	 */
 	memcpy((void *) TEMP_IRAM_AREA, &lpc32xx_sys_suspend,
 		lpc32xx_sys_suspend_sz);
+	flush_cache_all();
 	flush_icache_range((unsigned long)TEMP_IRAM_AREA,
 		(unsigned long)(TEMP_IRAM_AREA) + lpc32xx_sys_suspend_sz);
 
 	/* Transfer to suspend code in IRAM */
-	lpc32xx_suspend_ptr = (void *) TEMP_IRAM_AREA;
-	flush_cache_all();
 	(void) lpc32xx_suspend_ptr();
 
 	/* Restore original IRAM contents */
 	memcpy((void *) TEMP_IRAM_AREA, iram_swap_area,
 		lpc32xx_sys_suspend_sz);
 
-	kfree(iram_swap_area);
-
 	return 0;
 }
 
+static int lpc32xx_pm_enter(suspend_state_t state)
+{
+	int ret = 0;
+
+	lpc32xx_irq_suspend(state);
+
+	switch (state)
+	{
+		case PM_SUSPEND_STANDBY:
+			asm("mcr p15, 0, r0, c7, c0, 4");
+			break;
+		case PM_SUSPEND_MEM:
+			ret = lpc32xx_suspend();
+			break;
+	}
+
+	lpc32xx_irq_resume(state);
+
+	return ret;
+}
+
+static int lpc32xx_pm_valid(suspend_state_t state)
+{
+	return (state == PM_SUSPEND_STANDBY) ||
+	       (state == PM_SUSPEND_MEM);
+}
+
+
 static const struct platform_suspend_ops lpc32xx_pm_ops = {
-	.valid	= suspend_valid_only_mem,
+	.valid	= lpc32xx_pm_valid,
 	.enter	= lpc32xx_pm_enter,
 };
 
@@ -134,11 +147,21 @@ static const struct platform_suspend_ops lpc32xx_pm_ops = {
 static int __init lpc32xx_pm_init(void)
 {
 	/*
-	 * Setup SDRAM self-refresh clock to automatically disable o
+	 * Setup SDRAM self-refresh clock to automatically disable on
 	 * start of self-refresh. This only needs to be done once.
 	 */
 	__raw_writel(__raw_readl(EMC_CTRL_REG) | EMC_SRMMC, EMC_CTRL_REG);
 
+	/* Allocate some space for temporary IRAM storage */
+	iram_swap_area = kmalloc(lpc32xx_sys_suspend_sz, GFP_KERNEL);
+	if (!iram_swap_area) {
+		printk(KERN_ERR
+		       "PM Suspend: cannot allocate memory to save portion "
+			"of SRAM\n");
+		return -ENOMEM;
+	}
+
+	lpc32xx_suspend_ptr = (void *) TEMP_IRAM_AREA;
 	suspend_set_ops(&lpc32xx_pm_ops);
 
 	return 0;

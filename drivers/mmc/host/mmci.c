@@ -34,11 +34,257 @@
 #include <asm/io.h>
 #include <asm/sizes.h>
 
+#ifdef CONFIG_ARCH_LPC32XX
+#include <mach/clkdev.h>
+#include <mach/dmac.h>
+#include <mach/sdcard.h>
+#include <mach/dma.h>
+#include <mach/hardware.h>
+#endif
+
 #include "mmci.h"
 
 #define DRIVER_NAME "mmci-pl18x"
 
+#ifdef CONFIG_ARCH_LPC32XX
+static unsigned int fmax = 26000000;
+#else
 static unsigned int fmax = 515633;
+#endif
+
+#ifdef CONFIG_ARCH_LPC32XX
+#define DMA_BUFF_SIZE SZ_64K
+
+struct LPC32XX_SDDRV_DATA {
+	struct dma_config dmacfgtx;
+	struct dma_config dmacfgrx;
+	struct device *dev;
+	int lastch;
+	dma_addr_t dma_handle_tx;
+	void *dma_v_base;
+	int mapped;
+};
+static struct LPC32XX_SDDRV_DATA lpc32xx_drvdat;
+
+#define MCI_WIDEBUS (1 << 11)
+#undef MCI_IRQENABLE
+#define MCI_IRQENABLE   \
+        (MCI_CMDCRCFAILMASK|MCI_DATACRCFAILMASK|MCI_CMDTIMEOUTMASK|     \
+        MCI_DATATIMEOUTMASK|MCI_TXUNDERRUNMASK|MCI_RXOVERRUNMASK|       \
+        MCI_CMDRESPENDMASK|MCI_CMDSENTMASK)
+
+static int mmc_dma_setup(void)
+{
+	u32 llptrrx, llptrtx;
+	int ret = 0;
+
+	/*
+	 * There is a quirk with the LPC32XX and SD burst DMA. DMA sg
+	 * transfers where DMA is the flow controller will not transfer
+	 * the last few bytes to or from the SD card controller and
+	 * memory. For RX, the last few bytes in the SD transfer can be
+	 * forced out with a software DMA burst request. For TX, this
+	 * can't be done, so TX sg support cannot be supported. For TX,
+	 * a temporary bouncing buffer is used if more than 1 sg segment
+	 * is passed in the data request. The bouncing buffer will get a
+	 * contiguous copy of the TX data and it will be used instead.
+	 */
+
+	/* Allocate a chunk of memory for the DMA TX buffers */
+	lpc32xx_drvdat.dma_v_base = dma_alloc_coherent(lpc32xx_drvdat.dev,
+			DMA_BUFF_SIZE, &lpc32xx_drvdat.dma_handle_tx, GFP_KERNEL);
+	if (lpc32xx_drvdat.dma_v_base == NULL) {
+		dev_err(lpc32xx_drvdat.dev, "error getting DMA region\n");
+		ret = -ENOMEM;
+		goto dma_no_tx_buff;
+	}
+	dev_info(lpc32xx_drvdat.dev, "DMA buffer: phy:%p, virt:%p\n",
+			(void *) lpc32xx_drvdat.dma_handle_tx, lpc32xx_drvdat.dma_v_base);
+
+	/* Setup TX DMA channel */
+	lpc32xx_drvdat.dmacfgtx.ch = DMA_CH_SDCARD_TX;
+	lpc32xx_drvdat.dmacfgtx.tc_inten = 0;
+	lpc32xx_drvdat.dmacfgtx.err_inten = 0;
+	lpc32xx_drvdat.dmacfgtx.src_size = 4;
+	lpc32xx_drvdat.dmacfgtx.src_inc = 1;
+	lpc32xx_drvdat.dmacfgtx.src_ahb1 = 0;
+	lpc32xx_drvdat.dmacfgtx.src_bsize = DMAC_CHAN_SRC_BURST_8;
+	lpc32xx_drvdat.dmacfgtx.src_prph = DMAC_SRC_PERIP(DMA_PERID_SDCARD);
+	lpc32xx_drvdat.dmacfgtx.dst_size = 4;
+	lpc32xx_drvdat.dmacfgtx.dst_inc = 0;
+	lpc32xx_drvdat.dmacfgtx.dst_ahb1 = 0;
+	lpc32xx_drvdat.dmacfgtx.dst_bsize = DMAC_CHAN_DEST_BURST_8;
+	lpc32xx_drvdat.dmacfgtx.dst_prph = DMAC_DEST_PERIP(DMA_PERID_SDCARD);
+	lpc32xx_drvdat.dmacfgtx.flowctrl = DMAC_CHAN_FLOW_P_M2P;
+	if (lpc32xx_dma_ch_get(&lpc32xx_drvdat.dmacfgtx, "dma_sd_tx",
+				NULL, NULL) < 0) {
+		dev_err(lpc32xx_drvdat.dev, "Error setting up SD card TX DMA channel\n");
+		ret = -ENODEV;
+		goto dma_no_txch;
+	}
+
+	/* Allocate a linked list for DMA support */
+	llptrtx = lpc32xx_dma_alloc_llist(lpc32xx_drvdat.dmacfgtx.ch, NR_SG * 2);
+	if (llptrtx == 0) {
+		dev_err(lpc32xx_drvdat.dev, "Error allocating list buffer (MMC TX)\n");
+		ret = -ENOMEM;
+		goto dma_no_txlist;
+	}
+
+	/* Setup RX DMA channel */
+	lpc32xx_drvdat.dmacfgrx.ch = DMA_CH_SDCARD_RX;
+	lpc32xx_drvdat.dmacfgrx.tc_inten = 0;
+	lpc32xx_drvdat.dmacfgrx.err_inten = 0;
+	lpc32xx_drvdat.dmacfgrx.src_size = 4;
+	lpc32xx_drvdat.dmacfgrx.src_inc = 0;
+	lpc32xx_drvdat.dmacfgrx.src_ahb1 = 0;
+	lpc32xx_drvdat.dmacfgrx.src_bsize = DMAC_CHAN_SRC_BURST_8;
+	lpc32xx_drvdat.dmacfgrx.src_prph = DMAC_SRC_PERIP(DMA_PERID_SDCARD);
+	lpc32xx_drvdat.dmacfgrx.dst_size = 4;
+	lpc32xx_drvdat.dmacfgrx.dst_inc = 1;
+	lpc32xx_drvdat.dmacfgrx.dst_ahb1 = 0;
+	lpc32xx_drvdat.dmacfgrx.dst_bsize = DMAC_CHAN_DEST_BURST_8;
+	lpc32xx_drvdat.dmacfgrx.dst_prph = DMAC_DEST_PERIP(DMA_PERID_SDCARD);
+	lpc32xx_drvdat.dmacfgrx.flowctrl = DMAC_CHAN_FLOW_D_P2M;
+	if (lpc32xx_dma_ch_get(&lpc32xx_drvdat.dmacfgrx, "dma_sd_rx", NULL,
+				NULL) < 0) {
+		dev_err(lpc32xx_drvdat.dev, "Error setting up SD card RX DMA channel\n");
+		ret = -ENODEV;
+		goto dma_no_rxch;
+	}
+
+	/* Allocate a linked list for DMA support */
+	llptrrx = lpc32xx_dma_alloc_llist(lpc32xx_drvdat.dmacfgrx.ch, NR_SG * 2);
+	if (llptrrx == 0) {
+		dev_err(lpc32xx_drvdat.dev, "Error allocating list buffer (MMC RX)\n");
+		ret = -ENOMEM;
+		goto dma_no_rxlist;
+	}
+
+	return 0;
+
+dma_no_rxlist:
+	lpc32xx_dma_ch_put(lpc32xx_drvdat.dmacfgrx.ch);
+	lpc32xx_drvdat.dmacfgrx.ch = -1;
+dma_no_rxch:
+	lpc32xx_dma_dealloc_llist(lpc32xx_drvdat.dmacfgtx.ch);
+dma_no_txlist:
+	lpc32xx_dma_ch_put(lpc32xx_drvdat.dmacfgtx.ch);
+	lpc32xx_drvdat.dmacfgtx.ch = -1;
+dma_no_txch:
+	dma_free_coherent(lpc32xx_drvdat.dev, DMA_BUFF_SIZE,
+			lpc32xx_drvdat.dma_v_base, lpc32xx_drvdat.dma_handle_tx);
+dma_no_tx_buff:
+	return ret;
+}
+
+static void mmc_dma_dealloc(void)
+{
+	lpc32xx_dma_dealloc_llist(lpc32xx_drvdat.dmacfgrx.ch);
+	lpc32xx_dma_ch_put(lpc32xx_drvdat.dmacfgrx.ch);
+	lpc32xx_drvdat.dmacfgrx.ch = -1;
+	lpc32xx_dma_dealloc_llist(lpc32xx_drvdat.dmacfgtx.ch);
+	lpc32xx_dma_ch_put(lpc32xx_drvdat.dmacfgtx.ch);
+	lpc32xx_drvdat.dmacfgtx.ch = -1;
+	dma_free_coherent(lpc32xx_drvdat.dev, DMA_BUFF_SIZE,
+			lpc32xx_drvdat.dma_v_base, lpc32xx_drvdat.dma_handle_tx);
+}
+
+/* Supports scatter/gather */
+static void mmc_dma_rx_start(struct mmci_host *host)
+{
+	unsigned int len;
+	int i, dma_len;
+	struct scatterlist *sg;
+	struct mmc_request *mrq = host->mrq;
+	struct mmc_data *reqdata = mrq->data;
+	void *dmaaddr;
+	u32 dmalen, dmaxferlen;
+
+	sg = reqdata->sg;
+	len = reqdata->sg_len;
+
+	dma_len = dma_map_sg(mmc_dev(host->mmc), reqdata->sg, reqdata->sg_len,
+			DMA_FROM_DEVICE);
+	if (dma_len == 0)
+		return;
+
+	/* Setup transfer */
+	for (i = 0; i < len; i++) {
+		dmalen = (u32) sg_dma_len(&sg[i]);
+		dmaaddr = (void *) sg_dma_address(&sg[i]);
+
+		/* Build a list with a max size if 15872 bytes per seg */
+		while (dmalen > 0) {
+			dmaxferlen = dmalen;
+			if (dmaxferlen > 15872)
+				dmaxferlen = 15872;
+
+			lpc32xx_dma_queue_llist_entry(lpc32xx_drvdat.lastch,
+				(void *) SD_FIFO(LPC32XX_SD_BASE),
+				dmaaddr, dmaxferlen);
+
+				dmaaddr += dmaxferlen;
+				dmalen -= dmaxferlen;
+		}
+	}
+
+//printk("DMARX %d\n", len);
+}
+
+/* May need to reorganize buffer for scatter/gather */
+static void mmc_dma_tx_start(struct mmci_host *host)
+{
+	unsigned int len;
+	int dma_len;
+	struct scatterlist *sg;
+	struct mmc_request *mrq = host->mrq;
+	struct mmc_data *reqdata = mrq->data;
+	struct sg_mapping_iter *sg_miter = &host->sg_miter;
+	void *dmaaddr;
+	char *src_buffer, *dst_buffer;
+	unsigned long flags;
+
+	sg = reqdata->sg;
+	len = reqdata->sg_len;
+
+	/* Only 1 segment? */
+	if (len == 1) {
+		dma_len = dma_map_sg(mmc_dev(host->mmc), reqdata->sg,
+			reqdata->sg_len, DMA_TO_DEVICE);
+		if (dma_len == 0)
+			return;
+
+		dmaaddr = (void *) sg_dma_address(&sg[0]);
+		lpc32xx_drvdat.mapped = 1;
+	}
+	else {
+		/* Move data to contiguous buffer first, then transfer it */
+		dst_buffer = (char *) lpc32xx_drvdat.dma_v_base;
+		local_irq_save(flags);
+		do
+		{
+			/*
+			 * Map the current scatter buffer, copy data, and unmap
+			 */
+			if (!sg_miter_next(sg_miter))
+				break;
+
+			src_buffer = sg_miter->addr;
+			memcpy(dst_buffer, src_buffer, sg_miter->length);
+			dst_buffer += sg_miter->length;
+		} while (1);
+
+		sg_miter_stop(sg_miter);
+		local_irq_restore(flags);
+		lpc32xx_drvdat.mapped = 0;
+		dmaaddr = (void *) lpc32xx_drvdat.dma_handle_tx;
+	}
+
+	lpc32xx_dma_start_pflow_xfer(DMA_CH_SDCARD_TX, dmaaddr,
+		(void *) SD_FIFO(LPC32XX_SD_BASE), 1);
+}
+#endif
 
 /**
  * struct variant_data - MMCI variant-specific quirks
@@ -129,7 +375,7 @@ static void mmci_set_clkreg(struct mmci_host *host, unsigned int desired)
 		clk |= variant->clkreg_enable;
 		clk |= MCI_CLK_ENABLE;
 		/* This hasn't proven to be worthwhile */
-		/* clk |= MCI_CLK_PWRSAVE; */
+		clk |= MCI_CLK_PWRSAVE;
 	}
 
 	if (host->mmc->ios.bus_width == MMC_BUS_WIDTH_4)
@@ -439,7 +685,7 @@ static inline int mmci_dma_start_data(struct mmci_host *host, unsigned int datac
 static void mmci_start_data(struct mmci_host *host, struct mmc_data *data)
 {
 	struct variant_data *variant = host->variant;
-	unsigned int datactrl, timeout, irqmask;
+	unsigned int datactrl, timeout, irqmask = 0;
 	unsigned long long clks;
 	void __iomem *base;
 	int blksz_bits;
@@ -463,6 +709,28 @@ static void mmci_start_data(struct mmci_host *host, struct mmc_data *data)
 	blksz_bits = ffs(data->blksz) - 1;
 	BUG_ON(1 << blksz_bits != data->blksz);
 
+#ifdef CONFIG_ARCH_LPC32XX
+	datactrl = MCI_DPSM_ENABLE | MCI_DPSM_DMAENABLE | blksz_bits << 4;
+
+	/* IRQ mode, map the SG list for CPU reading/writing */
+	mmci_init_sg(host, data);
+
+	if (data->flags & MMC_DATA_READ) {
+		datactrl |= MCI_DPSM_DIRECTION;
+		lpc32xx_drvdat.lastch = DMA_CH_SDCARD_RX;
+		mmc_dma_rx_start(host);
+	}
+	else {
+		lpc32xx_drvdat.lastch = DMA_CH_SDCARD_TX;
+		mmc_dma_tx_start(host);
+	}
+
+	writel(datactrl, base + MMCIDATACTRL);
+	datactrl = readl(base + MMCIMASK0) & ~MCI_DATABLOCKENDMASK;
+	writel(datactrl | MCI_DATAENDMASK, base + MMCIMASK0);
+	mmci_set_mask1(host, irqmask);
+
+#else
 	datactrl = MCI_DPSM_ENABLE | blksz_bits << 4;
 
 	if (data->flags & MMC_DATA_READ)
@@ -504,6 +772,7 @@ static void mmci_start_data(struct mmci_host *host, struct mmc_data *data)
 	writel(datactrl, base + MMCIDATACTRL);
 	writel(readl(base + MMCIMASK0) & ~MCI_DATAENDMASK, base + MMCIMASK0);
 	mmci_set_mask1(host, irqmask);
+#endif
 }
 
 static void
@@ -542,9 +811,11 @@ mmci_data_irq(struct mmci_host *host, struct mmc_data *data,
 	if (status & (MCI_DATACRCFAIL|MCI_DATATIMEOUT|MCI_TXUNDERRUN|MCI_RXOVERRUN)) {
 		u32 remain, success;
 
+#ifndef CONFIG_ARCH_LPC32XX
 		/* Terminate the DMA transfer */
 		if (dma_inprogress(host))
 			mmci_dma_data_error(host);
+#endif
 
 		/*
 		 * Calculate how far we are into the transfer.  Note that
@@ -580,8 +851,22 @@ mmci_data_irq(struct mmci_host *host, struct mmc_data *data,
 		dev_err(mmc_dev(host->mmc), "stray MCI_DATABLOCKEND interrupt\n");
 
 	if (status & MCI_DATAEND || data->error) {
+#ifdef CONFIG_ARCH_LPC32XX
+		if (data->flags & MMC_DATA_READ) {
+			lpc32xx_dma_force_burst(lpc32xx_drvdat.lastch, DMA_PERID_SDCARD);
+			lpc32xx_dma_flush_llist(lpc32xx_drvdat.lastch);
+			dma_unmap_sg(mmc_dev(host->mmc), data->sg, data->sg_len, DMA_FROM_DEVICE);
+		}
+		else {
+			lpc32xx_dma_ch_disable(lpc32xx_drvdat.lastch);
+			if (lpc32xx_drvdat.mapped)
+				dma_unmap_sg(mmc_dev(host->mmc), data->sg,
+					data->sg_len, DMA_TO_DEVICE);
+		}
+#else
 		if (dma_inprogress(host))
 			mmci_dma_unmap(host, data);
+#endif
 		mmci_stop_data(host);
 
 		if (!data->error)
@@ -1088,12 +1373,21 @@ static int __devinit mmci_probe(struct amba_device *dev,
 	 */
 	mmc->max_segs = NR_SG;
 
+#ifdef CONFIG_ARCH_LPC32XX
+	/*
+	 * The LPC32x0 DMA controller can handle up to a 65535 byte DMA
+	 * transfer. We'll rely on the mmc core to make sure the passed
+	 * size for a request is block aligned.
+	 */
+	mmc->max_seg_size = 65535;
+#else
 	/*
 	 * Since only a certain number of bits are valid in the data length
 	 * register, we must ensure that we don't exceed 2^num-1 bytes in a
 	 * single request.
 	 */
 	mmc->max_req_size = (1 << variant->datalength_bits) - 1;
+#endif
 
 	/*
 	 * Set the maximum segment size.  Since we aren't doing DMA
@@ -1110,6 +1404,17 @@ static int __devinit mmci_probe(struct amba_device *dev,
 	 * No limit on the number of blocks transferred.
 	 */
 	mmc->max_blk_count = mmc->max_req_size;
+
+#ifdef CONFIG_ARCH_LPC32XX
+	/*
+	 * Setup DMA for the interface
+	 */
+	lpc32xx_drvdat.dev = &dev->dev;
+	if (mmc_dma_setup()) {
+		dev_err(&dev->dev, "error in setting up DMA \n");
+		goto irq0_free;
+	}
+#endif
 
 	spin_lock_init(&host->lock);
 
@@ -1168,7 +1473,9 @@ static int __devinit mmci_probe(struct amba_device *dev,
 		 amba_rev(dev), (unsigned long long)dev->res.start,
 		 dev->irq[0], dev->irq[1]);
 
+#ifndef CONFIG_ARCH_LPC32XX
 	mmci_dma_setup(host);
+#endif
 
 	mmc_add_host(mmc);
 
@@ -1215,7 +1522,10 @@ static int __devexit mmci_remove(struct amba_device *dev)
 		writel(0, host->base + MMCICOMMAND);
 		writel(0, host->base + MMCIDATACTRL);
 
+#ifndef CONFIG_ARCH_LPC32XX
 		mmci_dma_release(host);
+#endif
+
 		free_irq(dev->irq[0], host);
 		if (!host->singleirq)
 			free_irq(dev->irq[1], host);
@@ -1226,6 +1536,10 @@ static int __devexit mmci_remove(struct amba_device *dev)
 			free_irq(host->gpio_cd_irq, host);
 		if (host->gpio_cd != -ENOSYS)
 			gpio_free(host->gpio_cd);
+
+#ifdef CONFIG_ARCH_LPC32XX
+		mmc_dma_dealloc();
+#endif
 
 		iounmap(host->base);
 		clk_disable(host->clk);

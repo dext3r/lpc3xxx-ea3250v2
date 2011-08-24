@@ -136,6 +136,12 @@
 #define gadget_is_s3c_hsotg(g)    0
 #endif
 
+#ifdef CONFIG_USB_GADGET_LPC32XX
+#define	gadget_is_lpc32xx(g)	!strcmp("lpc32xx_udc", (g)->name)
+#else
+#define	gadget_is_lpc32xx(g)	0
+#endif
+
 #ifdef CONFIG_USB_GADGET_EG20T
 #define	gadget_is_pch(g)	(!strcmp("pch_udc", (g)->name))
 #else

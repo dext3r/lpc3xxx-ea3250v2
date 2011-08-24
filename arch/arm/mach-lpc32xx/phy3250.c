@@ -27,9 +27,12 @@
 #include <linux/spi/eeprom.h>
 #include <linux/leds.h>
 #include <linux/gpio.h>
+#include <linux/input.h>
 #include <linux/amba/bus.h>
 #include <linux/amba/clcd.h>
 #include <linux/amba/pl022.h>
+#include <linux/amba/mmci.h>
+#include <sound/uda1380.h>
 
 #include <asm/setup.h>
 #include <asm/mach-types.h>
@@ -37,15 +40,20 @@
 
 #include <mach/hardware.h>
 #include <mach/platform.h>
+#include <mach/board.h>
 #include "common.h"
 
 /*
  * Mapped GPIOLIB GPIOs
  */
-#define SPI0_CS_GPIO	LPC32XX_GPIO(LPC32XX_GPIO_P3_GRP, 5)
+#define SPI0_CS_GPIO		LPC32XX_GPIO(LPC32XX_GPIO_P3_GRP, 5)
 #define LCD_POWER_GPIO	LPC32XX_GPIO(LPC32XX_GPO_P3_GRP, 0)
 #define BKL_POWER_GPIO	LPC32XX_GPIO(LPC32XX_GPO_P3_GRP, 4)
-#define LED_GPIO	LPC32XX_GPIO(LPC32XX_GPO_P3_GRP, 1)
+#define LED_GPIO				LPC32XX_GPIO(LPC32XX_GPO_P3_GRP, 1)
+#define NAND_WP_GPIO		LPC32XX_GPIO(LPC32XX_GPO_P3_GRP, 19)
+#define	MMC_PWR_ENABLE_GPIO	LPC32XX_GPIO(LPC32XX_GPO_P3_GRP, 5)
+#define	MMC_CD_GPIO		LPC32XX_GPIO(LPC32XX_GPIO_P3_GRP, 1)
+#define	MMC_WP_GPIO		LPC32XX_GPIO(LPC32XX_GPIO_P3_GRP, 0)
 
 /*
  * AMBA LCD controller
@@ -233,7 +241,6 @@ static int __init phy3250_spi_board_register(void)
 			.max_speed_hz = 5000000,
 			.bus_num = 0,
 			.chip_select = 0,
-			.mode = SPI_MODE_0,
 			.platform_data = &eeprom,
 			.controller_data = &spi0_chip_info,
 		},
@@ -243,9 +250,24 @@ static int __init phy3250_spi_board_register(void)
 }
 arch_initcall(phy3250_spi_board_register);
 
+/*
+ * Platform Data for UDA1380 Audiocodec.
+ * As there are no GPIOs for codec power & reset pins,
+ * dummy GPIO numbers are used.
+ */
+static struct uda1380_platform_data uda1380_info = {
+	.gpio_power = LPC32XX_GPIO(LPC32XX_GPO_P3_GRP,10),
+	.gpio_reset = LPC32XX_GPIO(LPC32XX_GPO_P3_GRP,2),
+	.dac_clk    = UDA1380_DAC_CLK_WSPLL,
+};
+
 static struct i2c_board_info __initdata phy3250_i2c_board_info[] = {
 	{
 		I2C_BOARD_INFO("pcf8563", 0x51),
+	},
+	{
+		I2C_BOARD_INFO("uda1380", 0x18),
+		.platform_data = &uda1380_info,
 	},
 };
 
@@ -269,17 +291,251 @@ static struct platform_device lpc32xx_gpio_led_device = {
 	.dev.platform_data	= &led_data,
 };
 
+/*
+ * Board specific key scanner driver data
+ */
+#define PHY3250_KMATRIX_SIZE 1
+static int lpc32xx_keymaps[] = {
+	KEY_1,  /* 1, 1 */
+};
+
+static struct lpc32XX_kscan_cfg lpc32xx_kscancfg = {
+	.matrix_sz      = PHY3250_KMATRIX_SIZE,
+	.keymap         = lpc32xx_keymaps,
+	/* About a 30Hz scan rate based on a 32KHz clock */
+	.deb_clks       = 3,
+	.scan_delay     = 34,
+};
+
+static struct resource kscan_resources[] = {
+	[0] = {
+		.start  = LPC32XX_KSCAN_BASE,
+		.end    = LPC32XX_KSCAN_BASE + SZ_4K - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start  = IRQ_LPC32XX_KEY,
+		.end    = IRQ_LPC32XX_KEY,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+static struct platform_device lpc32xx_kscan_device = {
+	.name           = "lpc32xx_keys",
+	.id             = 0,
+	.dev            = {
+		.platform_data  = &lpc32xx_kscancfg,
+	},
+	.num_resources  = ARRAY_SIZE(kscan_resources),
+	.resource       = kscan_resources,
+};
+
+#if defined (CONFIG_MMC_ARMMMCI)
+static u32 mmc_translate_vdd(struct device *dev, unsigned int vdd,
+		unsigned char mode)
+{
+	/* Only on and off are supported */
+	if (vdd != 0)
+		gpio_set_value(MMC_PWR_ENABLE_GPIO,1);
+	else
+		gpio_set_value(MMC_PWR_ENABLE_GPIO,0);
+
+	return 0;
+}
+
+/*
+ * Board specific MMC driver data
+ */
+struct mmci_platform_data lpc32xx_plat_data = {
+	.ocr_mask       = MMC_VDD_30_31|MMC_VDD_31_32|MMC_VDD_32_33|MMC_VDD_33_34,
+	.vdd_handler	= mmc_translate_vdd,
+	.capabilities   = MMC_CAP_4_BIT_DATA,
+	.gpio_wp        = MMC_WP_GPIO,
+	.gpio_cd        = MMC_CD_GPIO,
+	.cd_invert = true,
+};
+
+/*
+ * SD card controller resources
+ */
+struct amba_device lpc32xx_mmc_device = {
+	.dev = {
+		.coherent_dma_mask = ~0,
+		.init_name = "dev:mmc0",
+		.platform_data = &lpc32xx_plat_data,
+	},
+	.res = {
+		.start = LPC32XX_SD_BASE,
+		.end = (LPC32XX_SD_BASE + SZ_4K - 1),
+		.flags = IORESOURCE_MEM,
+	},
+	.dma_mask = ~0,
+	.irq = {IRQ_LPC32XX_SD0, IRQ_LPC32XX_SD1},
+};
+#endif
+
+
+#if defined(CONFIG_MTD_NAND_SLC_LPC32XX)
+/*
+ * Board specific NAND setup data
+ */
+static int nandwp_enable(int enable)
+{
+	if (enable != 0)
+		gpio_set_value(NAND_WP_GPIO,0);
+	else
+		gpio_set_value(NAND_WP_GPIO,1);
+
+	return 1;
+}
+
+#define BLK_SIZE (512 * 32)
+static struct mtd_partition phy3250_nand_partition[] = {
+	{
+		.name   = "phy3250-boot",
+		.offset = 0,
+		.size   = (BLK_SIZE * 25)
+	},
+	{
+		.name   = "phy3250-uboot",
+		.offset = MTDPART_OFS_APPEND,
+		.size   = (BLK_SIZE * 100)
+	},
+	{
+		.name   = "phy3250-ubt-prms",
+		.offset = MTDPART_OFS_APPEND,
+		.size   = (BLK_SIZE * 4)
+	},
+	{
+		.name   = "phy3250-kernel",
+		.offset = MTDPART_OFS_APPEND,
+		.size   = (BLK_SIZE * 256)
+	},
+	{
+		.name   = "phy3250-rootfs",
+		.offset = MTDPART_OFS_APPEND,
+		.size   = MTDPART_SIZ_FULL
+	},
+};
+
+static struct mtd_partition * phy3250_nand_partitions(int size, int *num_partitions)
+{
+	*num_partitions = ARRAY_SIZE(phy3250_nand_partition);
+	return phy3250_nand_partition;
+}
+
+static struct lpc32XX_nand_cfg lpc32xx_nandcfg =
+{
+	.wdr_clks = 14,
+	.wwidth = 40000000,
+	.whold = 100000000,
+	.wsetup = 100000000,
+	.rdr_clks = 14,
+	.rwidth = 40000000,
+	.rhold = 66666666,
+	.rsetup = 100000000,
+	.use_bbt = true,
+	.polled_completion = false,
+	.enable_write_prot = nandwp_enable,
+	.partition_info = phy3250_nand_partitions,
+};
+
+/*
+ * SLC NAND resources
+ */
+static struct resource slc_nand_resources[] = {
+	[0] = {
+		.start  = LPC32XX_SLC_BASE,
+		.end    = LPC32XX_SLC_BASE + SZ_4K - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start  = IRQ_LPC32XX_FLASH,
+		.end    = IRQ_LPC32XX_FLASH,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+static u64 lpc32xx_slc_dma_mask = 0xffffffffUL;
+static struct platform_device lpc32xx_slc_nand_device = {
+	.name = "lpc32xx-nand",
+	.id = 0,
+	.dev = {
+		.platform_data = &lpc32xx_nandcfg,
+		.dma_mask = &lpc32xx_slc_dma_mask,
+		.coherent_dma_mask = ~0UL,
+	},
+	.num_resources  = ARRAY_SIZE(slc_nand_resources),
+	.resource = slc_nand_resources,
+};
+#endif
+
+/*
+ * Network Support
+ */
+static struct lpc_net_cfg lpc32xx_netdata =
+{
+	.phy_irq        = -1,
+	.phy_mask       = 0xFFFFFFF0,
+};
+
+static struct resource net_resources[] = {
+	[0] = {
+		.start  = LPC32XX_ETHERNET_BASE,
+		.end    = LPC32XX_ETHERNET_BASE + SZ_4K - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+
+	[1] = {
+		.start  = IRQ_LPC32XX_ETHERNET,
+		.end    = IRQ_LPC32XX_ETHERNET,
+		.flags  = IORESOURCE_IRQ,
+	},
+
+};
+
+static u64 lpc32xx_mac_dma_mask = 0xffffffffUL;
+static struct platform_device lpc32xx_net_device = {
+	.name           = "lpc-net",
+	.id             = 0,
+	.dev            = {
+		.dma_mask = &lpc32xx_mac_dma_mask,
+		.coherent_dma_mask = 0xffffffffUL,
+		.platform_data  = &lpc32xx_netdata,
+	},
+	.num_resources  = ARRAY_SIZE(net_resources),
+	.resource       = net_resources,
+};
+
 static struct platform_device *phy3250_devs[] __initdata = {
 	&lpc32xx_i2c0_device,
 	&lpc32xx_i2c1_device,
 	&lpc32xx_i2c2_device,
 	&lpc32xx_watchdog_device,
 	&lpc32xx_gpio_led_device,
+	&lpc32xx_rtc_device,
+	&lpc32xx_tsc_device,
+	&lpc32xx_kscan_device,
+	&lpc32xx_net_device,
+#if defined(CONFIG_MTD_NAND_SLC_LPC32XX)
+	&lpc32xx_slc_nand_device,
+#endif
+#if defined(CONFIG_USB_OHCI_HCD)
+	&lpc32xx_ohci_device,
+#endif
+#if defined(CONFIG_USB_GADGET_LPC32XX)
+	&lpc32xx_usbd_device,
+#endif
+	&lpc32xx_i2s_device,
+	&lpc32xx_asoc_plat_device,
 };
 
 static struct amba_device *amba_devs[] __initdata = {
 	&lpc32xx_clcd_device,
 	&lpc32xx_ssp0_device,
+#if defined(CONFIG_MMC_ARMMMCI)
+	&lpc32xx_mmc_device,
+#endif
 };
 
 /*
@@ -299,6 +555,13 @@ static void __init phy3250_board_init(void)
 	else if (gpio_direction_output(SPI0_CS_GPIO, 1))
 		printk(KERN_ERR "Error setting gpio %u to output",
 			SPI0_CS_GPIO);
+
+	if (gpio_request(MMC_PWR_ENABLE_GPIO, "mmc_power_en"))
+		printk(KERN_ERR "Error requesting gpio %u",
+				MMC_PWR_ENABLE_GPIO);
+	else if (gpio_direction_output(MMC_PWR_ENABLE_GPIO, 1))
+		printk(KERN_ERR "Error setting gpio %u to output",
+				MMC_PWR_ENABLE_GPIO);
 
 	/* Setup network interface for RMII mode */
 	tmp = __raw_readl(LPC32XX_CLKPWR_MACCLK_CTRL);
@@ -341,6 +604,12 @@ static void __init phy3250_board_init(void)
 	 * here. However, we don't want to enable them if the peripheral
 	 * isn't included in the image
 	 */
+#if defined(CONFIG_MMC_ARMMMCI)
+	tmp = __raw_readl(LPC32XX_CLKPWR_MS_CTRL);
+	tmp |= LPC32XX_CLKPWR_MSCARD_SDCARD_EN | LPC32XX_CLKPWR_MSCARD_MSDIO_PU_EN;
+	__raw_writel(tmp, LPC32XX_CLKPWR_MS_CTRL);
+#endif
+
 #ifdef CONFIG_FB_ARMCLCD
 	tmp = __raw_readl(LPC32XX_CLKPWR_LCDCLK_CTRL);
 	__raw_writel((tmp | LPC32XX_CLKPWR_LCDCTRL_CLK_EN),
@@ -380,7 +649,62 @@ static int __init lpc32xx_display_uid(void)
 }
 arch_initcall(lpc32xx_display_uid);
 
+/*
+ * Example code for setting up the BTN1 button (on GPI3) for system
+ * wakeup and IRQ support. This will allow the GPI3 input to wake
+ * up the system on a low edge. Edge based interrupts won't be
+ * registered in the interrupt controller when the system is asleep,
+ * although they will be registered in the event manager. For this,
+ * reason, a level based interrupt state is recommended for GPIOs when
+ * using IRQ and wakeup from GPI edge state.
+ *
+ */
+#define BTN1_GPIO		LPC32XX_GPIO(LPC32XX_GPI_P3_GRP, 3)
+static irqreturn_t phy3250_btn1_irq(int irq, void *dev)
+{
+	printk(KERN_INFO "GPIO IRQ!\n");
+
+	return IRQ_HANDLED;
+}
+
+static int __init phy3250_button_setup(void)
+{
+	int ret;
+
+	if (gpio_request(BTN1_GPIO, "Button 1")) {
+		printk(KERN_ERR "Error requesting gpio %u", BTN1_GPIO);
+		return 0;
+	}
+
+	/*
+	 * Wakeup/irq on low edge - the wakeup state will use the same
+	 * state as the IRQ edge state.
+	 */
+	irq_set_irq_type(IRQ_LPC32XX_GPI_03, IRQ_TYPE_EDGE_FALLING);
+	ret = request_irq(IRQ_LPC32XX_GPI_03, phy3250_btn1_irq,
+		IRQF_DISABLED, "gpio_btn1_irq", NULL);
+	if (ret < 0) {
+		printk(KERN_ERR "Can't request interrupt\n");
+		return 0;
+	}
+
+	enable_irq_wake(IRQ_LPC32XX_GPI_03);
+
+	return 1;
+}
+device_initcall(phy3250_button_setup);
+
 MACHINE_START(PHY3250, "Phytec 3250 board with the LPC3250 Microcontroller")
+	/* Maintainer: Kevin Wells, NXP Semiconductors */
+	.boot_params	= 0x80000100,
+	.map_io		= lpc32xx_map_io,
+	.init_irq	= lpc32xx_init_irq,
+	.timer		= &lpc32xx_timer,
+	.init_machine	= phy3250_board_init,
+MACHINE_END
+
+/* For backwards compatibility with older bootloaders only */
+MACHINE_START(LPC3XXX, "Phytec 3250 board with the LPC3250 Microcontroller")
 	/* Maintainer: Kevin Wells, NXP Semiconductors */
 	.boot_params	= 0x80000100,
 	.map_io		= lpc32xx_map_io,

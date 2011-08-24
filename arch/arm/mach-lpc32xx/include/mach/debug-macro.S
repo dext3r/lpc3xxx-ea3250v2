@@ -20,6 +20,33 @@
  * Debug output is hardcoded to standard UART 5
 */
 
+#if defined(CONFIG_SERIAL_HS_LPC32XX_CONSOLE)
+		.macro	addruart,rp, rv
+		ldreq	\rp, =0x40014000	@ physical
+		ldrne	\rv, =0xF4014000	@ virtual
+1003:
+		.endm
+
+		.macro	senduart,rd,rx
+		str	\rd, [\rx, #0]
+		.endm
+
+		.macro	busyuart,rd,rx
+1002:		ldr	\rd, [\rx, #0x0]
+		ldr	\rd, [\rx, #0x4]
+		cmp	\rd, #0
+		bne	1002b
+		.endm
+
+		.macro	waituart,rd,rx
+1001:		ldr	\rd, [\rx, #0x0]
+		ldr	\rd, [\rx, #0x4]
+		cmp	\rd, #0
+		bne	1001b
+		.endm
+
+#else
+
 	.macro	addruart, rp, rv
 	ldreq	\rp, =0x40090000
 	ldrne	\rv, =0xF4090000
@@ -27,3 +54,5 @@
 
 #define UART_SHIFT	2
 #include <asm/hardware/debug-8250.S>
+#endif
+

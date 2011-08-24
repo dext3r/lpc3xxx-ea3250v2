@@ -36,9 +36,6 @@
 #define LPC32XX_GPIO_P2_INP_STATE		_GPREG(0x01C)
 #define LPC32XX_GPIO_P2_OUTP_SET		_GPREG(0x020)
 #define LPC32XX_GPIO_P2_OUTP_CLR		_GPREG(0x024)
-#define LPC32XX_GPIO_P2_MUX_SET			_GPREG(0x028)
-#define LPC32XX_GPIO_P2_MUX_CLR			_GPREG(0x02C)
-#define LPC32XX_GPIO_P2_MUX_STATE		_GPREG(0x030)
 #define LPC32XX_GPIO_P0_INP_STATE		_GPREG(0x040)
 #define LPC32XX_GPIO_P0_OUTP_SET		_GPREG(0x044)
 #define LPC32XX_GPIO_P0_OUTP_CLR		_GPREG(0x048)
@@ -59,7 +56,7 @@
 #define GPO3_PIN_TO_BIT(x)			(1 << (x))
 #define GPIO012_PIN_IN_SEL(x, y)		(((x) >> (y)) & 1)
 #define GPIO3_PIN_IN_SHIFT(x)			((x) == 5 ? 24 : 10 + (x))
-#define GPIO3_PIN_IN_SEL(x, y)			((x) >> GPIO3_PIN_IN_SHIFT(y))
+#define GPIO3_PIN_IN_SEL(x, y)			(((x) >> GPIO3_PIN_IN_SHIFT(y)) & 1)
 #define GPIO3_PIN5_IN_SEL(x)			(((x) >> 24) & 1)
 #define GPI3_PIN_IN_SEL(x, y)			(((x) >> (y)) & 1)
 
@@ -74,12 +71,12 @@ struct gpio_regs {
 /*
  * GPIO names
  */
-static const char *gpio_p0_names[LPC32XX_GPIO_P0_MAX] = {
+static const char const *gpio_p0_names[LPC32XX_GPIO_P0_MAX] = {
 	"p0.0", "p0.1", "p0.2", "p0.3",
 	"p0.4", "p0.5", "p0.6", "p0.7"
 };
 
-static const char *gpio_p1_names[LPC32XX_GPIO_P1_MAX] = {
+static const char const *gpio_p1_names[LPC32XX_GPIO_P1_MAX] = {
 	"p1.0", "p1.1", "p1.2", "p1.3",
 	"p1.4", "p1.5", "p1.6", "p1.7",
 	"p1.8", "p1.9", "p1.10", "p1.11",
@@ -88,29 +85,30 @@ static const char *gpio_p1_names[LPC32XX_GPIO_P1_MAX] = {
 	"p1.20", "p1.21", "p1.22", "p1.23",
 };
 
-static const char *gpio_p2_names[LPC32XX_GPIO_P2_MAX] = {
+static const char const *gpio_p2_names[LPC32XX_GPIO_P2_MAX] = {
 	"p2.0", "p2.1", "p2.2", "p2.3",
 	"p2.4", "p2.5", "p2.6", "p2.7",
 	"p2.8", "p2.9", "p2.10", "p2.11",
 	"p2.12"
 };
 
-static const char *gpio_p3_names[LPC32XX_GPIO_P3_MAX] = {
-	"gpi000", "gpio01", "gpio02", "gpio03",
+static const char const *gpio_p3_names[LPC32XX_GPIO_P3_MAX] = {
+	"gpio00", "gpio01", "gpio02", "gpio03",
 	"gpio04", "gpio05"
 };
 
-static const char *gpi_p3_names[LPC32XX_GPI_P3_MAX] = {
+static const char const *gpi_p3_names[LPC32XX_GPI_P3_MAX] = {
 	"gpi00", "gpi01", "gpi02", "gpi03",
 	"gpi04", "gpi05", "gpi06", "gpi07",
 	"gpi08", "gpi09",  NULL,    NULL,
 	 NULL,    NULL,    NULL,   "gpi15",
 	"gpi16", "gpi17", "gpi18", "gpi19",
 	"gpi20", "gpi21", "gpi22", "gpi23",
-	"gpi24", "gpi25", "gpi26", "gpi27"
+	"gpi24", "gpi25", "gpi26", "gpi27",
+	"gpi28"
 };
 
-static const char *gpo_p3_names[LPC32XX_GPO_P3_MAX] = {
+static const char const *gpo_p3_names[LPC32XX_GPO_P3_MAX] = {
 	"gpo00", "gpo01", "gpo02", "gpo03",
 	"gpo04", "gpo05", "gpo06", "gpo07",
 	"gpo08", "gpo09", "gpo10", "gpo11",

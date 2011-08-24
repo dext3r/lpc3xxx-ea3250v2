@@ -30,6 +30,7 @@
 #include <mach/i2c.h>
 #include <mach/hardware.h>
 #include <mach/platform.h>
+#include <mach/board.h>
 #include "common.h"
 
 /*
@@ -48,6 +49,28 @@ struct platform_device lpc32xx_watchdog_device = {
 	.id = -1,
 	.num_resources = ARRAY_SIZE(watchdog_resources),
 	.resource = watchdog_resources,
+};
+
+/*
+ * Real Time Clock
+ */
+static struct resource rtc_resources[] = {
+	[0] = {
+		.start = LPC32XX_RTC_BASE,
+		.end = LPC32XX_RTC_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = IRQ_LPC32XX_RTC,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device lpc32xx_rtc_device = {
+	.name =  "rtc-lpc32xx",
+	.id = -1,
+	.num_resources = ARRAY_SIZE(rtc_resources),
+	.resource = rtc_resources,
 };
 
 /*
@@ -93,6 +116,140 @@ struct platform_device lpc32xx_i2c2_device = {
 	.dev = {
 		.platform_data = &i2c2_data,
 	},
+};
+
+/*
+ * Touch Screen support
+ */
+static struct resource tsc_resources[] = {
+	[0] = {
+		.start = LPC32XX_ADC_BASE,
+		.end = LPC32XX_ADC_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = IRQ_LPC32XX_TS_IRQ,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+struct platform_device lpc32xx_tsc_device = {
+	.name =  "lpc32xx-ts",
+	.id = -1,
+	.num_resources = ARRAY_SIZE(tsc_resources),
+	.resource = tsc_resources,
+};
+
+#if defined (CONFIG_USB_OHCI_HCD)
+/* The dmamask must be set for OHCI to work */
+static u64 ohci_dmamask = ~(u32) 0;
+static struct resource ohci_resources[] = {
+	{
+		.start = IO_ADDRESS(LPC32XX_USB_BASE),
+		.end = IO_ADDRESS(LPC32XX_USB_BASE + 0x100),
+		.flags = IORESOURCE_MEM,
+	}, {
+		.start = IRQ_LPC32XX_USB_HOST,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+struct platform_device lpc32xx_ohci_device = {
+	.name = "usb-ohci",
+	.id = -1,
+	.dev = {
+		.dma_mask = &ohci_dmamask,
+		.coherent_dma_mask = 0xFFFFFFFF,
+	},
+	.num_resources = ARRAY_SIZE(ohci_resources),
+	.resource = ohci_resources,
+};
+#endif
+
+
+#if defined(CONFIG_USB_GADGET_LPC32XX)
+static void phy3250_usbd_conn_chg(int conn) {
+	/* Do nothing, it might be nice to enable an LED
+	 * based on conn state being !0 */
+}
+
+static void phy3250_usbd_susp_chg(int susp) {
+    /* Device suspend if susp != 0 */
+}
+
+static void phy3250_rmwkup_chg(int remote_wakup_enable) {
+    /* Enable or disable USB remote wakeup */
+}
+
+struct lpc32xx_usbd_cfg lpc32xx_usbddata = {
+	.vbus_drv_pol = 1,
+	.conn_chgb = &phy3250_usbd_conn_chg,
+	.susp_chgb = &phy3250_usbd_susp_chg,
+	.rmwk_chgb = &phy3250_rmwkup_chg,
+};
+
+/* The dmamask must be set for OHCI to work, align to 128 bytes */
+static u64 usbd_dmamask = ~(u32) 0x7F;
+static struct resource usbd_resources[] = {
+	{
+		.start = LPC32XX_USB_BASE,
+		.end = LPC32XX_USB_BASE + 0x100,
+		.flags = IORESOURCE_MEM,
+	}, {
+		.start = IRQ_LPC32XX_USB_DEV_LP,
+		.flags = IORESOURCE_IRQ,
+	}, {
+		.start = IRQ_LPC32XX_USB_DEV_HP,
+		.flags = IORESOURCE_IRQ,
+	}, {
+		.start = IRQ_LPC32XX_USB_DEV_DMA,
+		.flags = IORESOURCE_IRQ,
+	}, {
+		.start = IRQ_LPC32XX_USB_OTG_ATX,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device lpc32xx_usbd_device = {
+	.name = "lpc32xx_udc",
+	.id = -1,
+	.dev = {
+		.dma_mask = &usbd_dmamask,
+		.coherent_dma_mask = 0xFFFFFFFF,
+		.platform_data  = &lpc32xx_usbddata,
+	},
+	.num_resources = ARRAY_SIZE(usbd_resources),
+	.resource = usbd_resources,
+};
+#endif
+
+/*
+ * I2S
+ */
+static struct resource i2s_resources[] = {
+	[0] = {
+		.start = LPC32XX_I2S0_BASE,
+		.end = LPC32XX_I2S0_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = LPC32XX_I2S1_BASE,
+		.end = LPC32XX_I2S1_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+};
+
+struct platform_device lpc32xx_i2s_device = {
+	.name = "lpc3xxx-i2s",
+	.id = -1,
+	.num_resources = ARRAY_SIZE(i2s_resources),
+	.resource = i2s_resources,
+};
+
+/*
+ * ASOC platform device
+ */
+struct platform_device lpc32xx_asoc_plat_device = {
+	.name = "lpc3xxx-audio",
+	.id = 0,
 };
 
 /*

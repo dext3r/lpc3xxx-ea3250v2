@@ -32,7 +32,8 @@
 #define LPC32XX_CLKPWR_HCLK_DIV_OFFS	0x40
 #define LPC32XX_CLKPWR_HCLKPLL_CTRL_OFFS 0x58
 
-#define CLKPWR_PCLK_DIV_MASK		0xFFFFFE7F
+#define CLKPWR_PCLK_DIV_MASK1		0xFFFFFF83
+#define CLKPWR_PCLK_DIV_MASK2		0xFFFFFE03
 
 	.text
 
@@ -78,15 +79,19 @@ ENTRY(lpc32xx_sys_suspend)
 	cmp	WORK2_REG, #LPC32XX_EMC_STATUS_SELF_RFSH
 	bne	3b @ Branch until self-refresh mode starts
 
+	@ Set PCLK divider to 1 prior to direct-run mode entry
+	ldr	SAVED_HCLK_DIV_REG, [CLKPWRBASE_REG,\
+		#LPC32XX_CLKPWR_HCLK_DIV_OFFS]
+	and	WORK2_REG, SAVED_HCLK_DIV_REG, #CLKPWR_PCLK_DIV_MASK1
+	str	WORK2_REG, [CLKPWRBASE_REG, #LPC32XX_CLKPWR_HCLK_DIV_OFFS]
+
 	@ Enter direct-run mode from run mode
 	bic	WORK1_REG, WORK1_REG, #LPC32XX_CLKPWR_SELECT_RUN_MODE
 	str	WORK1_REG, [CLKPWRBASE_REG, #LPC32XX_CLKPWR_PWR_CTRL_OFFS]
 
 	@ Safe disable of DRAM clock in EMC block, prevents DDR sync
 	@ issues on restart
-	ldr	SAVED_HCLK_DIV_REG, [CLKPWRBASE_REG,\
-		#LPC32XX_CLKPWR_HCLK_DIV_OFFS]
-	and	WORK2_REG, SAVED_HCLK_DIV_REG, #CLKPWR_PCLK_DIV_MASK
+	and	WORK2_REG, SAVED_HCLK_DIV_REG, #CLKPWR_PCLK_DIV_MASK2
 	str	WORK2_REG, [CLKPWRBASE_REG, #LPC32XX_CLKPWR_HCLK_DIV_OFFS]
 
 	@ Save HCLK PLL state and disable HCLK PLL
@@ -98,20 +103,22 @@ ENTRY(lpc32xx_sys_suspend)
 	@ Enter stop mode until an enabled event occurs
 	orr	WORK1_REG, WORK1_REG, #LPC32XX_CLKPWR_STOP_MODE_CTRL
 	str	WORK1_REG, [CLKPWRBASE_REG, #LPC32XX_CLKPWR_PWR_CTRL_OFFS]
+
 	.rept 9
 	nop
 	.endr
 
-	@ Clear stop status
+	@ Clear stop status now
 	bic	WORK1_REG, WORK1_REG, #LPC32XX_CLKPWR_STOP_MODE_CTRL
+	str	WORK1_REG, [CLKPWRBASE_REG, #LPC32XX_CLKPWR_PWR_CTRL_OFFS]
 
 	@ Restore original HCLK PLL value and wait for PLL lock
 	str	SAVED_HCLK_PLL_REG, [CLKPWRBASE_REG,\
 		#LPC32XX_CLKPWR_HCLKPLL_CTRL_OFFS]
 4:
 	ldr	WORK2_REG, [CLKPWRBASE_REG, #LPC32XX_CLKPWR_HCLKPLL_CTRL_OFFS]
-	and	WORK2_REG, WORK2_REG, #LPC32XX_CLKPWR_HCLKPLL_PLL_STS
-	bne	4b
+	ands WORK2_REG, WORK2_REG, #LPC32XX_CLKPWR_HCLKPLL_PLL_STS
+	beq 4b
 
 	@ Re-enter run mode with self-refresh flag cleared, but no DRAM
 	@ update yet. DRAM is still in self-refresh
@@ -132,8 +139,8 @@ ENTRY(lpc32xx_sys_suspend)
 	@ Wait for EMC to clear self-refresh mode
 5:
 	ldr	WORK2_REG, [EMCBASE_REG, #LPC32XX_EMC_STATUS_OFFS]
-	and	WORK2_REG, WORK2_REG, #LPC32XX_EMC_STATUS_SELF_RFSH
-	bne	5b @ Branch until self-refresh has exited
+	ands WORK2_REG, WORK2_REG, #LPC32XX_EMC_STATUS_SELF_RFSH
+	bne 5b @ Branch until self-refresh has exited
 
 	@ restore regs and return
 	adr	r0, tmp_stack

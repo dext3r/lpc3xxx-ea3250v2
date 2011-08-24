@@ -23,6 +23,22 @@
 #define LPC32XX_SIC2_IRQ(n)		(64 + (n))
 
 /*
+ * Default value representing the Activation polarity of all internal
+ * interrupt sources
+ */
+#define MIC_APR_DEFAULT		0x3FF0EFE0
+#define SIC1_APR_DEFAULT	0xFBD27186
+#define SIC2_APR_DEFAULT	0x801810C0
+
+/*
+ * Default value representing the Activation Type of all internal
+ * interrupt sources. All are level sensitive.
+ */
+#define MIC_ATR_DEFAULT		0x00000000
+#define SIC1_ATR_DEFAULT	0x00026000
+#define SIC2_ATR_DEFAULT	0x00000000
+
+/*
  * MIC interrupts
  */
 #define IRQ_LPC32XX_SUB1IRQ		0
@@ -61,7 +77,7 @@
  */
 #define IRQ_LPC32XX_JTAG_COMM_TX	LPC32XX_SIC1_IRQ(1)
 #define IRQ_LPC32XX_JTAG_COMM_RX	LPC32XX_SIC1_IRQ(2)
-#define IRQ_LPC32XX_GPI_11		LPC32XX_SIC1_IRQ(4)
+#define IRQ_LPC32XX_GPI_28		LPC32XX_SIC1_IRQ(4)
 #define IRQ_LPC32XX_TS_P		LPC32XX_SIC1_IRQ(6)
 #define IRQ_LPC32XX_TS_IRQ		LPC32XX_SIC1_IRQ(7)
 #define IRQ_LPC32XX_TS_AUX		LPC32XX_SIC1_IRQ(8)
@@ -113,5 +129,6 @@
 #define IRQ_LPC32XX_SYSCLK		LPC32XX_SIC2_IRQ(31)
 
 #define NR_IRQS				96
+#define NR_IRQ_CTRLS	3
 
 #endif

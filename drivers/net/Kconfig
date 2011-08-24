@@ -2008,6 +2008,14 @@ config BCM63XX_ENET
 	  This driver supports the ethernet MACs in the Broadcom 63xx
 	  MIPS chipset family (BCM63XX).
 
+config LPC_ENET
+	tristate "NXP ethernet MAC on LPC devices"
+	depends on ARCH_LPC32XX
+	select PHYLIB
+	help
+		Say Y here if you want to use the NXP ethernet MAC included
+		on some NXP LPC devices.
+
 config FTMAC100
 	tristate "Faraday FTMAC100 10/100 Ethernet support"
 	depends on ARM
