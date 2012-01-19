@@ -228,6 +228,10 @@ static int pnx4008_wdt_release(struct inode *inode, struct file *file)
 	if (!test_bit(WDT_OK_TO_CLOSE, &wdt_status))
 		printk(KERN_WARNING "WATCHDOG: Device closed unexpectdly\n");
 
+	/* We should not disable watchdog if nowayout is set */
+	if (nowayout)
+		return 0;
+
 	wdt_disable();
 	clk_disable(wdt_clk);
 	clear_bit(WDT_IN_USE, &wdt_status);
