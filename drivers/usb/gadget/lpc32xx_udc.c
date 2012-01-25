@@ -458,25 +458,26 @@ static void power_work(struct work_struct *work)
 /* Issues a single command to the USB device state machine */
 static void udc_protocol_cmd_w(struct lpc32xx_udc *udc, u32 cmd)
 {
-	volatile u32 tmp;
-	int to = 1000;
+	u32 pass = 0;
+	int to;
 
 	/* EP may lock on CLRI if this read isn't done */
-	tmp = __raw_readl(USBD_DEVINTST(udc->udp_baseaddr));
+	volatile u32 tmp = __raw_readl(USBD_DEVINTST(udc->udp_baseaddr));
+	(void) tmp;
 
-	/* Clear CCEMPTY flash */
-	__raw_writel(USBD_CCEMPTY, USBD_DEVINTCLR(udc->udp_baseaddr));
+	while (pass == 0) {
+		__raw_writel(USBD_CCEMPTY, USBD_DEVINTCLR(udc->udp_baseaddr));
 
-	/* Write command code and wait for protocol engine acceptance */
-	__raw_writel(cmd, USBD_CMDCODE(udc->udp_baseaddr));
+		/* Write command code */
+		__raw_writel(cmd, USBD_CMDCODE(udc->udp_baseaddr));
+		to = 10000;
+		while (((__raw_readl(USBD_DEVINTST(udc->udp_baseaddr)) &
+			USBD_CCEMPTY) == 0) && (to > 0)) {
+			to--;
+		}
 
-	/* Wait for CCEMPTY to signal command acceptance */
-	tmp = __raw_readl(USBD_DEVINTST(udc->udp_baseaddr));
-	while ((!(__raw_readl(USBD_DEVINTST(udc->udp_baseaddr)) & USBD_CCEMPTY))
-		&& (to > 0))
-		to--;
-	if (!to)
-		dev_dbg(udc->dev, "Protocol engine didn't accept command (CCEMPTY)\n");
+		if (to > 0) pass = 1;
+	}
 }
 
 /* Issues 2 commands (or command and data) to the USB device state machine */
