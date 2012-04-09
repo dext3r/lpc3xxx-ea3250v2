@@ -392,7 +392,7 @@ static void __lpc_net_shutdown(struct netdata_local *pldat)
 static int lpc_mdio_read(struct mii_bus *bus, int phy_id, int phyreg)
 {
 	struct netdata_local *pldat = bus->priv;
-	unsigned long timeout = jiffies + ((HZ * 100) / 1000); /* 100mS */
+	unsigned long timeout = jiffies + msecs_to_jiffies(100);
 	int lps;
 
 	writel(((phy_id << 8) | phyreg), LPC_ENET_MADR(pldat->net_base));
@@ -400,7 +400,7 @@ static int lpc_mdio_read(struct mii_bus *bus, int phy_id, int phyreg)
 
 	/* Wait for unbusy status */
 	while (readl(LPC_ENET_MIND(pldat->net_base)) & LPC_MIND_BUSY) {
-		if (jiffies > timeout)
+		if (time_after(jiffies,timeout))
 			return -EIO;
 		cpu_relax();
 	}
@@ -415,14 +415,14 @@ static int lpc_mdio_write(struct mii_bus *bus, int phy_id, int phyreg,
 			u16 phydata)
 {
 	struct netdata_local *pldat = bus->priv;
-	unsigned long timeout = jiffies + ((HZ * 100) / 1000); /* 100mS */
+	unsigned long timeout = jiffies + msecs_to_jiffies(100);
 
 	writel(((phy_id << 8) | phyreg), LPC_ENET_MADR(pldat->net_base));
 	writel(phydata, LPC_ENET_MWTD(pldat->net_base));
 
 	/* Wait for completion */
 	while (readl(LPC_ENET_MIND(pldat->net_base)) & LPC_MIND_BUSY) {
-		if (jiffies > timeout)
+		if (time_after(jiffies,timeout))
 			return -EIO;
 		cpu_relax();
 	}
