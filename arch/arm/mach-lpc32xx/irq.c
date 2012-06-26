@@ -336,11 +336,13 @@ static int lpc32xx_set_irq_type(struct irq_data *d, unsigned int type)
 	case IRQ_TYPE_EDGE_RISING:
 		/* Rising edge sensitive */
 		__lpc32xx_set_irq_type(d->irq, 1, 1);
+		__irq_set_handler_locked(d->irq, handle_edge_irq);
 		break;
 
 	case IRQ_TYPE_EDGE_FALLING:
 		/* Falling edge sensitive */
 		__lpc32xx_set_irq_type(d->irq, 0, 1);
+		__irq_set_handler_locked(d->irq, handle_edge_irq);
 		break;
 
 	case IRQ_TYPE_LEVEL_LOW:
