@@ -257,12 +257,6 @@ CONFIG_MACH_EA3250=y
 # CONFIG_MACH_FDI3250 is not set
 
 #
-# Embedded Artists Display Selection
-#
-CONFIG_EA3250_QVGA_3_2_LCD=y
-# CONFIG_EA3250_QVGA_2_8_OLED is not set
-
-#
 # Standard UARTS
 #
 # CONFIG_ARCH_LPC32XX_UART3_SELECT is not set

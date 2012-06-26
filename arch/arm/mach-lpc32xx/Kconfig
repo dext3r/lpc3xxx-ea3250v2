@@ -23,20 +23,6 @@ choice
 
 endchoice
 
-menu "Embedded Artists Display Selection"
-	depends on MACH_EA3250
-
-config EA3250_QVGA_3_2_LCD
-	bool "3.2 inch QVGA LCD display (RGB565)"
-	help
-	  Use 3.2 inch QVGA LCD display
-
-config EA3250_QVGA_2_8_OLED
-	bool "2.8 inch QVGA OLED display (RGB565)"
-	help
-	  Use 2.8 inch QVGA OLED display
-
-endmenu
 
 
 config SOM9DIMM3250_LCD_PANEL
