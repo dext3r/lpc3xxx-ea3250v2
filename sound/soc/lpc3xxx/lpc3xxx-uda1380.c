@@ -168,7 +168,7 @@ static struct snd_soc_dai_link phy3250_uda1380_dai[] = {
 		.codec_dai_name	= "uda1380-hifi",
 		.init		= phy3250_uda1380_init,
 		.platform_name	= "lpc3xxx-audio.0",
-		.codec_name	= "uda1380-codec.0-0018",
+		.codec_name	= "uda1380-codec.0-001a",
 		.ops		= &phy3250_uda1380_ops,
 	},
 };
