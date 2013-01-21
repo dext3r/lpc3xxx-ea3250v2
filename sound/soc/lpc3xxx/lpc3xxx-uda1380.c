@@ -161,9 +161,9 @@ static struct snd_soc_dai_link phy3250_uda1380_dai[] = {
 		.name		= "uda1380",
 		.stream_name	= "UDA1380 Duplex",
 #if defined(CONFIG_SND_LPC32XX_USEI2S1)
-		.cpu_dai_name	= "lpc3xxx-i2s1",
+		.cpu_dai_name	= "lpc3xxx-i2s",
 #else
-		.cpu_dai_name	= "lpc3xxx-i2s0",
+		.cpu_dai_name	= "lpc3xxx-i2s",
 #endif
 		.codec_dai_name	= "uda1380-hifi",
 		.init		= phy3250_uda1380_init,
