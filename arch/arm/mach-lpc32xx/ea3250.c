@@ -32,6 +32,7 @@
 #include <linux/amba/clcd.h>
 #include <linux/amba/pl022.h>
 #include <linux/amba/mmci.h>
+#include <sound/uda1380.h>
 #include <linux/kthread.h>
 #include <mtd/mtd-abi.h>
 
@@ -46,10 +47,12 @@
 #include <mach/board.h>
 #include "common.h"
 
+
 #include <linux/spi/ads7846.h>
 
 #define I2C_PCA9532_ADDR 0x60
 #define I2C_24LC256_ADDR 0x50
+
 
 /*
  * Mapped GPIOLIB GPIOs
@@ -1477,10 +1480,25 @@ static struct platform_device lpc32xx_net_device = {
 };
 
 /*
+ * Platform Data for UDA1380 Audiocodec.
+ * As there are no GPIOs for codec power & reset pins,
+ * dummy GPIO numbers are used.
+ */
+static struct uda1380_platform_data uda1380_info = {
+	.gpio_power = LPC32XX_GPIO(LPC32XX_GPO_P3_GRP,10),
+	.gpio_reset = LPC32XX_GPIO(LPC32XX_GPO_P3_GRP,2),
+	.dac_clk    = UDA1380_DAC_CLK_WSPLL,
+};
+
+
+/*
  * I2C devices support
  */
 #if defined (CONFIG_LEDS_PCA9532) || defined (CONFIG_EEPROM_AT24) || defined (CONFIG_FB_ARMCLCD)
 	static struct i2c_board_info __initdata ea3250_i2c_board_info [] = {
+		{	I2C_BOARD_INFO("uda1380", 0x1a),
+			.platform_data = &uda1380_info,
+		},
 #if defined (CONFIG_LEDS_PCA9532)
 		{
 			I2C_BOARD_INFO("pca9532", I2C_PCA9532_ADDR),
@@ -1632,7 +1650,7 @@ static int __init lpc32xx_display_uid(void)
 
 	lpc32xx_get_uid(uid);
 
-	printk(KERN_INFO "LPC32XX unique ID: %08x%08x%08x%08x\n",
+	printk(KERN_INFO "DERP! LPC32XX unique ID: %08x%08x%08x%08x\n",
 			uid[3], uid[2], uid[1], uid[0]);
 
 	return 1;
