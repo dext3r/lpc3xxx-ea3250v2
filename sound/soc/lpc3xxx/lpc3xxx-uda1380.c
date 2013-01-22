@@ -201,7 +201,7 @@ static int __init phy3250_asoc_init(void)
 			   SND_MODNAME, ret);
 		goto err_device_add;
 	}
-
+	pr_warning ("%s: platform_device_add success! (%d)\n",SND_MODNAME,ret)
 	return 0;
 
 err_device_add:
