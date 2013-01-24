@@ -133,7 +133,7 @@ static int lpc3xxx_i2s_startup(struct snd_pcm_substream *substream,
 
 	if (dmamask & i2s_info_p->dma_flags) {
 		/* This channel already enabled! */
-		pr_warning("%s: I2S DMA channel is busy!\n",
+		printk("%s: I2S DMA channel is busy!\n",
 			I2S_NAME);
 		return -EBUSY;
 	}
@@ -285,15 +285,19 @@ static int lpc3xxx_i2s_hw_params(struct snd_pcm_substream *substream,
 	   frequency */
 	__lpc3xxx_find_clkdiv(&clkx, &clky, i2s_info_p->freq, xfersize, i2s_info_p->clkrate);
 
-	pr_warning("Desired clock rate    : %d\n", i2s_info_p->freq);
-	pr_warning("Base clock rate       : %d\n", i2s_info_p->clkrate);
-	pr_warning("Transfer size (bytes) : %d\n", xfersize);
-	pr_warning("Clock divider (x)     : %d\n", clkx);
-	pr_warning("Clock divider (y)     : %d\n", clky);
-	pr_warning("Channels              : %d\n", params_channels(params));
-	pr_warning("Data format           : %d\n", i2s_info_p->daifmt);
+	printk("I2S CONFIGURATION SUMMARY:\n");
+	printk("-----------------------------------------\n");
+	printk("Desired clock rate    : %d\n", i2s_info_p->freq);
+	printk("Base clock rate       : %d\n", i2s_info_p->clkrate);
+	printk("Transfer size (bytes) : %d\n", xfersize);
+	printk("Clock divider (x)     : %d\n", clkx);
+	printk("Clock divider (y)     : %d\n", clky);
+	printk("Channels              : %d\n", params_channels(params));
+	printk("Data format           : %d\n", i2s_info_p->daifmt);
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		
+		printk("STREAM PLAYBACK SECTION ENTERED!\n");
 		/* Enable DAO support, correct clock rate, and DMA */
 		__raw_writel(I2S_DMA1_TX_EN | I2S_DMA0_TX_DEPTH(4),
 			I2S_DMA1(i2s_info_p->iomem));
@@ -301,14 +305,15 @@ static int lpc3xxx_i2s_hw_params(struct snd_pcm_substream *substream,
 			I2S_TX_RATE(i2s_info_p->iomem));
 		__raw_writel(tmp, I2S_DAO(i2s_info_p->iomem));
 
-		pr_warning("TX DMA1               : 0x%x\n",
+		printk("TX DMA1               : 0x%x\n",
 			__raw_readl(I2S_DMA1(i2s_info_p->iomem)));
-		pr_warning("TX dividers           : 0x%x\n",
+		printk("TX dividers           : 0x%x\n",
 			__raw_readl(I2S_TX_RATE(i2s_info_p->iomem)));
-		pr_warning("TX DAO                : 0x%x\n",
+		printk("TX DAO                : 0x%x\n",
 			__raw_readl(I2S_DAO(i2s_info_p->iomem)));
 	}
 	else {
+		printk("STREAM PLAYBACK SECTION BYPASSED!\n");
 		/* Enable DAI support, correct clock rate, and DMA */
 		__raw_writel(I2S_DMA0_RX_EN | I2S_DMA1_RX_DEPTH(4),
 			I2S_DMA0(i2s_info_p->iomem));
@@ -327,11 +332,11 @@ static int lpc3xxx_i2s_hw_params(struct snd_pcm_substream *substream,
 
 		__raw_writel(tmp, I2S_DAI(i2s_info_p->iomem));
 
-		pr_warning("RX DMA0               : 0x%x\n",
+		printk("RX DMA0               : 0x%x\n",
 			__raw_readl(I2S_DMA0(i2s_info_p->iomem)));
-		pr_warning("RX dividers           : 0x%x\n",
+		printk("RX dividers           : 0x%x\n",
 			__raw_readl(I2S_RX_RATE(i2s_info_p->iomem)));
-		pr_warning("RX DAI                : 0x%x\n",
+		printk("RX DAI                : 0x%x\n",
 			__raw_readl(I2S_DAI(i2s_info_p->iomem)));
 	}
 
@@ -492,6 +497,8 @@ static __devinit int lpc3xxx_i2s_plat_probe(struct platform_device *pdev)
 	u32 clkx, clky;
 	struct lpc3xxx_i2s_info *i2s;
 
+	printk("I2S PLATFORM PROBE ENTERED\n");
+
 	/* Allocate mem for i2s_info structure */
 	i2s_info = devm_kzalloc(&pdev->dev,
 			(sizeof(struct lpc3xxx_i2s_info) * pdev->num_resources), GFP_KERNEL);
@@ -505,6 +512,7 @@ static __devinit int lpc3xxx_i2s_plat_probe(struct platform_device *pdev)
 		i2s = &i2s_info[i];
 
 		/* Enable I2S clock */
+		printk("ATTEMPTING TO ENABLE I2S Clock...\n");
 		snprintf(&clk_name[i * CLK_NAME], CLK_NAME, "i2s%d_ck", i);
 		i2s->clkname = &clk_name[i * CLK_NAME];
 		i2s->clk = clk_get(NULL, i2s->clkname);
@@ -571,6 +579,7 @@ static __devinit int lpc3xxx_i2s_plat_probe(struct platform_device *pdev)
 		__raw_writel(0x83C1, I2S_DAO(i2s->iomem));
 
 		i2s->initialized = 1;
+		printk("I2S MARKED AS INITIALIZED!\n");
 	}
 
 	/* Regsiter SND SOC driver */
@@ -581,6 +590,7 @@ static __devinit int lpc3xxx_i2s_plat_probe(struct platform_device *pdev)
 		goto err_res;
 	}
 
+	printk("I2S DAI REGISTERED!\n");
 	return 0;
 
 err_res:
