@@ -419,7 +419,7 @@ static int lpc3xxx_pcm_new(struct snd_card *card,
 	}
 
 	if (dai->driver->capture.channels_min) {
-		pr_debug("%s: Allocating PCM capture DMA buffer\n", SND_NAME);
+		pr_warning("%s: Allocating PCM capture DMA buffer\n", SND_NAME);
 		ret = lpc3xxx_pcm_allocate_dma_buffer(
 			  pcm, SNDRV_PCM_STREAM_CAPTURE);
 		if (ret)
