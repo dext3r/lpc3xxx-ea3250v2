@@ -100,7 +100,7 @@ static void lpc3xxx_pcm_dma_irq(int channel, int cause,
 
 	count++;
 
-	printk("%s: DMA IRQ occured!", SND_NAME);
+	printk("%s: DMA IRQ occured!\n", SND_NAME);
 
 	/* A DMA interrupt occurred - for most cases, this will be the end
 	   of a transmitted buffer in the DMA link list, but errors are also
