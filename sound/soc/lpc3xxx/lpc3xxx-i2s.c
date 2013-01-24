@@ -285,13 +285,13 @@ static int lpc3xxx_i2s_hw_params(struct snd_pcm_substream *substream,
 	   frequency */
 	__lpc3xxx_find_clkdiv(&clkx, &clky, i2s_info_p->freq, xfersize, i2s_info_p->clkrate);
 
-	pr_debug("Desired clock rate    : %d\n", i2s_info_p->freq);
-	pr_debug("Base clock rate       : %d\n", i2s_info_p->clkrate);
-	pr_debug("Transfer size (bytes) : %d\n", xfersize);
-	pr_debug("Clock divider (x)     : %d\n", clkx);
-	pr_debug("Clock divider (y)     : %d\n", clky);
-	pr_debug("Channels              : %d\n", params_channels(params));
-	pr_debug("Data format           : %d\n", i2s_info_p->daifmt);
+	pr_warning("Desired clock rate    : %d\n", i2s_info_p->freq);
+	pr_warning("Base clock rate       : %d\n", i2s_info_p->clkrate);
+	pr_warning("Transfer size (bytes) : %d\n", xfersize);
+	pr_warning("Clock divider (x)     : %d\n", clkx);
+	pr_warning("Clock divider (y)     : %d\n", clky);
+	pr_warning("Channels              : %d\n", params_channels(params));
+	pr_warning("Data format           : %d\n", i2s_info_p->daifmt);
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		/* Enable DAO support, correct clock rate, and DMA */
@@ -301,11 +301,11 @@ static int lpc3xxx_i2s_hw_params(struct snd_pcm_substream *substream,
 			I2S_TX_RATE(i2s_info_p->iomem));
 		__raw_writel(tmp, I2S_DAO(i2s_info_p->iomem));
 
-		pr_debug("TX DMA1               : 0x%x\n",
+		pr_warning("TX DMA1               : 0x%x\n",
 			__raw_readl(I2S_DMA1(i2s_info_p->iomem)));
-		pr_debug("TX dividers           : 0x%x\n",
+		pr_warning("TX dividers           : 0x%x\n",
 			__raw_readl(I2S_TX_RATE(i2s_info_p->iomem)));
-		pr_debug("TX DAO                : 0x%x\n",
+		pr_warning("TX DAO                : 0x%x\n",
 			__raw_readl(I2S_DAO(i2s_info_p->iomem)));
 	}
 	else {
@@ -327,11 +327,11 @@ static int lpc3xxx_i2s_hw_params(struct snd_pcm_substream *substream,
 
 		__raw_writel(tmp, I2S_DAI(i2s_info_p->iomem));
 
-		pr_debug("RX DMA0               : 0x%x\n",
+		pr_warning("RX DMA0               : 0x%x\n",
 			__raw_readl(I2S_DMA0(i2s_info_p->iomem)));
-		pr_debug("RX dividers           : 0x%x\n",
+		pr_warning("RX dividers           : 0x%x\n",
 			__raw_readl(I2S_RX_RATE(i2s_info_p->iomem)));
-		pr_debug("RX DAI                : 0x%x\n",
+		pr_warning("RX DAI                : 0x%x\n",
 			__raw_readl(I2S_DAI(i2s_info_p->iomem)));
 	}
 
