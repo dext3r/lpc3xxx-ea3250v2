@@ -107,7 +107,7 @@ static void lpc3xxx_pcm_dma_irq(int channel, int cause,
 		/* DMA error - this should never happen, but you just never
 		   know. If it does happen, the driver will continue without
 		   any problems except for maybe an audio glitch or pop. */
-		pr_debug("%s: DMA error %s (count=%d)\n", SND_NAME,
+		printk("%s: DMA error %s (count=%d)\n", SND_NAME,
 			   substream->stream == SNDRV_PCM_STREAM_PLAYBACK ?
 			   "underrun" : "overrun", count);
 	}
@@ -210,7 +210,7 @@ static int lpc3xxx_pcm_prepare(struct snd_pcm_substream *substream)
 			prtd->dmacfg.flowctrl = DMAC_CHAN_FLOW_D_M2P;
 			if (lpc32xx_dma_ch_get(&prtd->dmacfg, "dma_i2s_tx",
 				&lpc3xxx_pcm_dma_irq, substream) < 0) {
-				pr_debug(KERN_ERR "Error setting up I2S TX DMA channel\n");
+				printk(KERN_ERR "Error setting up I2S TX DMA channel\n");
 				return -ENODEV;
 			}
 
@@ -219,7 +219,7 @@ static int lpc3xxx_pcm_prepare(struct snd_pcm_substream *substream)
 			if (prtd->llptr == 0) {
 				lpc32xx_dma_ch_put(prtd->dmach);
 				prtd->dmach = -1;
-				pr_debug(KERN_ERR "Error allocating list buffer (I2S TX)\n");
+				printk(KERN_ERR "Error allocating list buffer (I2S TX)\n");
 				return -ENOMEM;
 			}
 		}
@@ -245,7 +245,7 @@ static int lpc3xxx_pcm_prepare(struct snd_pcm_substream *substream)
 			prtd->dmacfg.flowctrl = DMAC_CHAN_FLOW_D_P2M;
 			if (lpc32xx_dma_ch_get(&prtd->dmacfg, "dma_i2s_rx",
 				&lpc3xxx_pcm_dma_irq, substream) < 0) {
-				pr_debug(KERN_ERR "Error setting up I2S RX DMA channel\n");
+				printk(KERN_ERR "Error setting up I2S RX DMA channel\n");
 				return -ENODEV;
 			}
 
@@ -254,7 +254,7 @@ static int lpc3xxx_pcm_prepare(struct snd_pcm_substream *substream)
 			if (prtd->llptr == 0) {
 				lpc32xx_dma_ch_put(prtd->dmach);
 				prtd->dmach = -1;
-				pr_debug(KERN_ERR "Error allocating list buffer (I2S RX)\n");
+				printk(KERN_ERR "Error allocating list buffer (I2S RX)\n");
 				return -ENOMEM;
 			}
 		}
@@ -419,7 +419,7 @@ static int lpc3xxx_pcm_new(struct snd_card *card,
 	}
 
 	if (dai->driver->capture.channels_min) {
-		pr_warning("%s: Allocating PCM capture DMA buffer\n", SND_NAME);
+		printk("%s: Allocating PCM capture DMA buffer\n", SND_NAME);
 		ret = lpc3xxx_pcm_allocate_dma_buffer(
 			  pcm, SNDRV_PCM_STREAM_CAPTURE);
 		if (ret)
