@@ -412,10 +412,12 @@ static int lpc3xxx_pcm_new(struct snd_card *card,
 		card->dev->coherent_dma_mask = 0xffffffff;
 
 	if (dai->driver->playback.channels_min) {
+		printk("%s: Allocating PCM playback DMA buffer\n", SND_NAME);
 		ret = lpc3xxx_pcm_allocate_dma_buffer(
 			  pcm, SNDRV_PCM_STREAM_PLAYBACK);
 		if (ret)
 			goto out;
+		printk("%s: Playback DMA allocated!", SND_NAME);
 	}
 
 	if (dai->driver->capture.channels_min) {
@@ -424,7 +426,8 @@ static int lpc3xxx_pcm_new(struct snd_card *card,
 			  pcm, SNDRV_PCM_STREAM_CAPTURE);
 		if (ret)
 			goto out;
-	}
+		printk("%s: Capture DMA allocated!", SND_NAME);
+		}
 
 out:
 	return ret;
