@@ -74,7 +74,7 @@ static int phy3250_uda1380_hw_params(struct snd_pcm_substream *substream,
 	ret = snd_soc_dai_set_sysclk(cpu_dai, 0, params_rate(params),
 					    SND_SOC_CLOCK_OUT);
 	if (ret < 0) {
-		pr_warning("%s: "
+		printk("%s: "
 			   "Failed to set I2S clock (%d)\n",
 			   SND_MODNAME, ret);
 		return ret;
@@ -83,14 +83,14 @@ static int phy3250_uda1380_hw_params(struct snd_pcm_substream *substream,
 	/* Set CPU and CODEC DAI format */
 	ret = snd_soc_dai_set_fmt(cpu_dai, fmt);
 	if (ret < 0) {
-		pr_warning("%s: "
+		printk("%s: "
 			   "Failed to set CPU DAI format (%d)\n",
 			   SND_MODNAME, ret);
 		return ret;
 	}
 	ret = snd_soc_dai_set_fmt(codec_dai, fmt);
 	if (ret < 0) {
-		pr_warning("%s: "
+		printk("%s: "
 			   "Failed to set CODEC DAI format (%d)\n",
 			   SND_MODNAME, ret);
 		return ret;
