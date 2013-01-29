@@ -305,6 +305,8 @@ static int lpc3xxx_i2s_hw_params(struct snd_pcm_substream *substream,
 			I2S_TX_RATE(i2s_info_p->iomem));
 		__raw_writel(tmp, I2S_DAO(i2s_info_p->iomem));
 
+		printk("Heres the stupid mem address: 0x%x\n",i2s_info_p->iomem);
+
 		printk("TX DMA1               : 0x%x\n",
 			__raw_readl(I2S_DMA1(i2s_info_p->iomem)));
 		printk("TX dividers           : 0x%x\n",
